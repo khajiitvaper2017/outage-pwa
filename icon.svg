@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="24" fill="#1a1a2e"/>
+  <!-- bulb glass -->
+  <path d="M64 18
+           C44 18 30 34 30 52
+           C30 64 36 74 44 80
+           L44 92
+           Q44 98 50 98
+           L78 98
+           Q84 98 84 92
+           L84 80
+           C92 74 98 64 98 52
+           C98 34 84 18 64 18 Z"
+        fill="#f5d76e" stroke="#e8e8f0" stroke-width="3"/>
+  <!-- filament -->
+  <path d="M52 48 Q64 38 76 48 M52 58 Q64 48 76 58"
+        fill="none" stroke="#8a6d1d" stroke-width="3" stroke-linecap="round"/>
+  <!-- base rings -->
+  <rect x="50" y="98" width="28" height="6" rx="2" fill="#8888a0"/>
+  <rect x="54" y="106" width="20" height="6" rx="2" fill="#666680"/>
+  <rect x="58" y="114" width="12" height="6" rx="2" fill="#555570"/>
+</svg>

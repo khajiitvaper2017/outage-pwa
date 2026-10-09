@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="description" content="Графік відключень світла — сповіщення про наступне відключення">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <title>Графік відключень</title>
+  <style>
+    :root {
+      --bg: #0f0f1a;
+      --card: #1a1a2e;
+      --text: #e8e8f0;
+      --muted: #8888a0;
+      --off: #8f3d49;
+      --possible: #8a6d1d;
+      --on: #3f7f4f;
+      --accent: #4a9eff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      padding: 16px;
+      padding-bottom: 80px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: 1.25rem; font-weight: 700; }
+    button {
+      background: var(--card);
+      border: 1px solid #333;
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    button:disabled { opacity: 0.5; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .status {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+    .status.error { color: #e53935; }
+    .next-card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 20px;
+      border-left: 4px solid var(--off);
+    }
+    .next-card .label { font-size: 0.8rem; color: var(--muted); }
+    .next-card .time { font-size: 1.8rem; font-weight: 700; margin: 4px 0; }
+    .next-card .countdown { font-size: 1.1rem; color: var(--accent); }
+    .queue-section {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .queue-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: baseline;
+    }
+    .queue-title .totals { font-weight: 400; color: var(--muted); font-size: 0.8rem; }
+    .intervals {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .interval {
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #fff;
+    }
+    .interval.off { background: var(--off); }
+    .interval.possible { background: var(--possible); }
+    .interval.on { background: var(--on); }
+    .settings {
+      margin-top: 20px;
+      padding: 14px;
+      background: var(--card);
+      border-radius: 12px;
+    }
+    .settings > strong { display: block; margin-bottom: 10px; }
+    .queue-grid {
+      display: grid;
+      gap: 8px;
+    }
+    .queue-chip {
+      background: var(--bg);
+      border: 2px solid #333;
+      color: var(--text);
+      padding: 10px 6px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: border-color 0.15s, background 0.15s;
+      white-space: nowrap;
+    }
+    .queue-chip.selected {
+      border-color: var(--accent);
+      background: #1a2a4a;
+      color: #fff;
+    }
+    .settings label.opt {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 14px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .empty { color: var(--muted); text-align: center; padding: 40px 0; }
+    footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--card);
+      padding: 10px 16px;
+      display: flex;
+      gap: 8px;
+      border-top: 1px solid #333;
+      z-index: 10;
+    }
+    footer button { flex: 1; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Графік відключень</h1>
+    <button id="btnRefresh" onclick="poll()">↻</button>
+  </header>
+  <p class="status" id="status">Завантаження…</p>
+
+  <div id="nextOutage" class="next-card" style="display:none">
+    <div class="label">Наступне відключення</div>
+    <div class="time" id="nextTime">—</div>
+    <div class="countdown" id="nextCountdown">—</div>
+    <div class="label" id="nextQueue" style="margin-top:4px"></div>
+  </div>
+
+  <div id="schedules"></div>
+  <div id="empty" class="empty" style="display:none">Немає даних</div>
+
+  <div class="settings">
+    <strong>Черга</strong>
+    <div class="queue-grid" id="queueGrid"></div>
+    <label class="opt"><input type="checkbox" id="countPossible" checked> Вважати «можливе» як світло</label>
+  </div>
+
+  <footer>
+    <button class="primary" id="btnNotify" onclick="enableNotifications()">Увімкнути сповіщення</button>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "Графік відключень",
+  "short_name": "Відключення",
+  "description": "Графік відключень світла з сповіщеннями",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f0f1a",
+  "theme_color": "#1a1a2e",
+  "lang": "uk",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
