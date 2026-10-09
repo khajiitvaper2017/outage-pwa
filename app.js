@@ -214,6 +214,49 @@ function nextOutage() {
   return result;
 }
 
+function nextTransition() {
+  const now = new Date();
+  const rows = visibleSchedules();
+  const current = now.getHours() * 60 + now.getMinutes();
+  const treatPossibleAsOn = countPossibleAsOn();
+  const active = [];
+
+  rows.forEach(item => {
+    if (item.date.toDateString() !== now.toDateString()) return;
+    item.intervals.forEach(interval => {
+      const start = minutes(interval.start);
+      const end = interval.end === "00:00" ? 1440 : minutes(interval.end);
+      if (start <= current && current < end) {
+        const state = treatPossibleAsOn && interval.state === "possible" ? "on" : interval.state;
+        active.push({ item, state });
+      }
+    });
+  });
+
+  const offQueues = new Set(active.filter(entry => entry.state === "off").map(entry => entry.item.queue));
+  const targetState = offQueues.size ? "on" : "off";
+  const targetRows = offQueues.size ? rows.filter(item => offQueues.has(item.queue)) : rows;
+  let result = null;
+
+  targetRows.forEach(item => {
+    item.intervals.forEach(interval => {
+      const state = treatPossibleAsOn && interval.state === "possible" ? "on" : interval.state;
+      if (state !== targetState) return;
+      const date = new Date(item.date);
+      const [h, m] = interval.start.split(":").map(Number);
+      date.setHours(h, m, 0, 0);
+      if (date > now && (!result || date < result.date)) {
+        result = { date, time: interval.start, queue: item.queue };
+      }
+    });
+  });
+
+  return {
+    event: result,
+    label: offQueues.size ? "Світло з’явиться" : "Наступне відключення"
+  };
+}
+
 function minutesUntil(event) {
   return Math.ceil(Math.max(0, event.date - new Date()) / 60000);
 }
@@ -390,9 +433,11 @@ function updateStatus() {
 function render() {
   updateStatus();
 
-  // next outage card
-  const event = nextOutage();
+  // Show the next power-on while currently in an outage; otherwise show the next outage.
+  const transition = nextTransition();
+  const event = transition.event;
   const nextEl = document.getElementById("nextOutage");
+  document.getElementById("nextLabel").textContent = transition.label;
   if (event) {
     nextEl.style.display = "block";
     document.getElementById("nextTime").textContent = event.time;
