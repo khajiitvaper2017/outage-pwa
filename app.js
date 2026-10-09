@@ -8,6 +8,7 @@ let loading = false;
 let errorText = "";
 let lastAlertKey = "";
 let persistentNotifId = null;
+let deferredInstallPrompt = null;
 
 // ——— helpers (from QML) ———
 function stripTags(value) {
@@ -329,6 +330,19 @@ function updateNotifyButton() {
   }
 }
 
+function updateInstallButton() {
+  const btn = document.getElementById("btnInstall");
+  if (btn) btn.hidden = !deferredInstallPrompt;
+}
+
+async function installApp() {
+  if (!deferredInstallPrompt) return;
+  await deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  updateInstallButton();
+}
+
 function sendOutageAlert() {
   if (Notification.permission !== "granted") return;
   const event = nextOutage();
@@ -527,6 +541,18 @@ function render() {
 }
 
 // ——— init ———
+const installButton = document.getElementById("btnInstall");
+installButton.addEventListener("click", installApp);
+window.addEventListener("beforeinstallprompt", event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  updateInstallButton();
+});
+window.addEventListener("appinstalled", () => {
+  deferredInstallPrompt = null;
+  updateInstallButton();
+});
+
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(console.warn);
 }
