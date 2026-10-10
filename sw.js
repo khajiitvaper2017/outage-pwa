@@ -45,23 +45,19 @@ self.addEventListener("message", e => {
       tag: "outage-persistent",
       silent: true,
       icon: "icon.svg",
-      requireInteraction: false
+      requireInteraction: false,
+      data: { url: "./" }
     });
   }
 });
 
-self.addEventListener("periodicsync", e => {
-  if (e.tag === "outage-poll") {
-    e.waitUntil(fetchAndNotify());
-  }
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const url = new URL(e.notification.data?.url || "./", self.location.origin).href;
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(clients => {
+      const existing = clients.find(client => new URL(client.url).origin === self.location.origin);
+      return existing ? existing.focus() : self.clients.openWindow(url);
+    })
+  );
 });
-
-async function fetchAndNotify() {
-  try {
-    const res = await fetch(
-      "https://www.poe.pl.ua/customs/dynamicgpv-info.php",
-      { cache: "no-store" }
-    );
-    await res.text();
-  } catch (_) {}
-}

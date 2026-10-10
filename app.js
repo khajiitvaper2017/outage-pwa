@@ -7,7 +7,6 @@ let lastUpdated = "";
 let loading = false;
 let errorText = "";
 let lastAlertKey = "";
-let persistentNotifId = null;
 let deferredInstallPrompt = null;
 
 // ——— helpers (from QML) ———
@@ -44,6 +43,14 @@ function timeLabel(index) {
 function minutes(time) {
   const parts = time.split(":");
   return Number(parts[0]) * 60 + Number(parts[1]);
+}
+
+function effectiveState(state, treatPossibleAsOn) {
+  return treatPossibleAsOn && state === "possible" ? "on" : state;
+}
+
+function intervalEnd(interval) {
+  return interval.end === "00:00" ? 1440 : minutes(interval.end);
 }
 
 function parseTable(tableHtml, prefix) {
@@ -144,26 +151,20 @@ function visibleIntervals(item) {
   const current = now.getHours() * 60 + now.getMinutes();
   const treatPossibleAsOn = countPossibleAsOn();
 
-  // Normalize state: possible → on when option is on
-  const normalized = item.intervals.map(iv => ({
-    ...iv,
-    state: treatPossibleAsOn && iv.state === "possible" ? "on" : iv.state
-  }));
-
-  // Merge consecutive intervals with the same state
   const merged = [];
-  for (const iv of normalized) {
+  for (const interval of item.intervals) {
+    const state = effectiveState(interval.state, treatPossibleAsOn);
     const prev = merged[merged.length - 1];
-    if (prev && prev.state === iv.state && prev.end === iv.start) {
-      prev.end = iv.end;
+    if (prev && prev.state === state && prev.end === interval.start) {
+      prev.end = interval.end;
     } else {
-      merged.push({ state: iv.state, start: iv.start, end: iv.end });
+      merged.push({ state, start: interval.start, end: interval.end });
     }
   }
 
   return merged.filter(interval => {
     if (!isToday) return item.date > now;
-    const end = interval.end === "00:00" ? 1440 : minutes(interval.end);
+    const end = intervalEnd(interval);
     return end > current;
   });
 }
@@ -172,7 +173,7 @@ function dailyTotals(item) {
   const totals = { on: 0, possible: 0, off: 0 };
   item.intervals.forEach(interval => {
     const start = minutes(interval.start);
-    const end = interval.end === "00:00" ? 1440 : minutes(interval.end);
+    const end = intervalEnd(interval);
     totals[interval.state] += end - start;
   });
   if (countPossibleAsOn()) {
@@ -226,9 +227,9 @@ function nextTransition() {
     if (item.date.toDateString() !== now.toDateString()) return;
     item.intervals.forEach(interval => {
       const start = minutes(interval.start);
-      const end = interval.end === "00:00" ? 1440 : minutes(interval.end);
+      const end = intervalEnd(interval);
       if (start <= current && current < end) {
-        const state = treatPossibleAsOn && interval.state === "possible" ? "on" : interval.state;
+        const state = effectiveState(interval.state, treatPossibleAsOn);
         active.push({ item, state });
       }
     });
@@ -241,7 +242,7 @@ function nextTransition() {
 
   targetRows.forEach(item => {
     item.intervals.forEach(interval => {
-      const state = treatPossibleAsOn && interval.state === "possible" ? "on" : interval.state;
+      const state = effectiveState(interval.state, treatPossibleAsOn);
       if (state !== targetState) return;
       const date = new Date(item.date);
       const [h, m] = interval.start.split(":").map(Number);
@@ -267,6 +268,13 @@ function countdown(event) {
   if (total < 1) return "<1 хв";
   if (total < 60) return `${total} хв`;
   return `${Math.floor(total / 60)} год ${total % 60} хв`;
+}
+
+function openAppFromNotification(notification) {
+  notification.onclick = () => {
+    window.focus();
+    notification.close();
+  };
 }
 
 // ——— notifications ———
@@ -298,11 +306,12 @@ async function enableNotifications() {
     updateNotifyButton();
     if (perm === "granted") {
       // Show a test notification so the user sees it works
-      new Notification("Сповіщення увімкнено", {
+      const notification = new Notification("Сповіщення увімкнено", {
         body: "Ви отримуватимете попередження про відключення",
         tag: "outage-welcome",
         icon: "icon.svg"
       });
+      openAppFromNotification(notification);
       updatePersistentNotification();
       sendOutageAlert();
     } else if (perm === "denied") {
@@ -356,22 +365,24 @@ function sendOutageAlert() {
   const key = event.queue + "|" + event.date.getTime() + "|" + threshold;
   if (key === lastAlertKey) return;
   lastAlertKey = key;
-  new Notification("Відключення наближається", {
-    body: `Черга ${event.queue}: о ${event.time} — приблизно ${remaining} хв`,
+  const notification = new Notification("Відключення наближається", {
+    body: `О ${event.time} — приблизно ${remaining} хв`,
     tag: "outage-alert",
     requireInteraction: true,
     icon: "icon.svg"
   });
+  openAppFromNotification(notification);
 }
 
 function updatePersistentNotification() {
   if (Notification.permission !== "granted") return;
-  const event = nextOutage();
-  const title = event
-    ? `Відкл. о ${event.time} (${countdown(event)})`
-    : "Немає найближчих відключень";
+  const transition = nextTransition();
+  const event = transition.event;
+  const title = event ? transition.label : "Немає найближчих відключень";
   const body = event
-    ? `Черга ${event.queue}`
+    ? transition.label === "Світло з’явиться"
+      ? `Світло з’явиться о ${event.time} — через ${countdown(event)}`
+      : `О ${event.time} — через ${countdown(event)}`
     : lastUpdated ? `Оновлено ${lastUpdated}` : "";
 
   // Close previous tagged notification and show updated one
@@ -382,12 +393,13 @@ function updatePersistentNotification() {
       body
     });
   } else {
-    new Notification(title, {
+    const notification = new Notification(title, {
       body,
       tag: "outage-persistent",
       silent: true,
       icon: "icon.svg"
     });
+    openAppFromNotification(notification);
   }
 }
 
@@ -501,12 +513,11 @@ function render() {
   const byNum = (a, b) => a.localeCompare(b, undefined, { numeric: true });
   const row1 = available.filter(q => /\.1$/.test(q)).sort(byNum);
   const row2 = available.filter(q => /\.2$/.test(q)).sort(byNum);
-  const others = available.filter(q => !/\.[12]$/.test(q)).sort(byNum);
   // fall back if naming differs
   const top = row1.length ? row1 : available.sort(byNum).slice(0, Math.ceil(available.length / 2));
   const bot = row2.length ? row2 : available.sort(byNum).slice(Math.ceil(available.length / 2));
   // pad shorter row so columns align
-  const cols = Math.max(top.length, bot.length, others.length, 1);
+  const cols = Math.max(top.length, bot.length, 1);
   while (top.length < cols) top.push(null);
   while (bot.length < cols) bot.push(null);
   const displayList = [...top, ...bot];
