@@ -37,27 +37,3 @@ self.addEventListener("fetch", e => {
       .catch(() => caches.match(e.request).then(r => r || caches.match("./")))
   );
 });
-
-self.addEventListener("message", e => {
-  if (e.data?.type === "SHOW_PERSISTENT") {
-    self.registration.showNotification(e.data.title, {
-      body: e.data.body || "",
-      tag: "outage-persistent",
-      silent: true,
-      icon: "icon.svg",
-      requireInteraction: false,
-      data: { url: "./" }
-    });
-  }
-});
-
-self.addEventListener("notificationclick", e => {
-  e.notification.close();
-  const url = new URL(e.notification.data?.url || "./", self.location.origin).href;
-  e.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(clients => {
-      const existing = clients.find(client => new URL(client.url).origin === self.location.origin);
-      return existing ? existing.focus() : self.clients.openWindow(url);
-    })
-  );
-});

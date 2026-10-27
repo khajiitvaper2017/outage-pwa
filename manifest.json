@@ -1,7 +1,7 @@
 {
   "name": "Графік відключень",
   "short_name": "Відключення",
-  "description": "Графік відключень світла з сповіщеннями",
+  "description": "Графік відключень світла в Полтавській області",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0f0f1a",

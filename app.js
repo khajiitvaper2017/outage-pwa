@@ -6,7 +6,6 @@ let schedules = [];
 let lastUpdated = "";
 let loading = false;
 let errorText = "";
-let lastAlertKey = "";
 let deferredInstallPrompt = null;
 
 // ——— helpers (from QML) ———
@@ -195,24 +194,6 @@ function totalsText(item) {
   return parts.join(" · ");
 }
 
-function nextOutage() {
-  const now = new Date();
-  const rows = visibleSchedules();
-  let result = null;
-  rows.forEach(item => {
-    item.intervals.forEach(interval => {
-      if (interval.state !== "off") return;
-      const date = new Date(item.date);
-      const [h, m] = interval.start.split(":").map(Number);
-      date.setHours(h, m, 0, 0);
-      if (date > now && (!result || date < result.date)) {
-        result = { date, time: interval.start, queue: item.queue };
-      }
-    });
-  });
-  return result;
-}
-
 function nextTransition() {
   const now = new Date();
   const rows = visibleSchedules();
@@ -267,78 +248,9 @@ function countdown(event) {
   return `${Math.floor(total / 60)} год ${total % 60} хв`;
 }
 
-function openAppFromNotification(notification) {
-  notification.onclick = () => {
-    window.focus();
-    notification.close();
-  };
-}
-
-// ——— notifications ———
-async function enableNotifications() {
-  if (!("Notification" in window)) {
-    alert("Сповіщення не підтримуються в цьому браузері");
-    return;
-  }
-
-  // Already decided
-  if (Notification.permission === "granted") {
-    updateNotifyButton();
-    updatePersistentNotification();
-    sendOutageAlert();
-    return;
-  }
-  if (Notification.permission === "denied") {
-    alert(
-      "Сповіщення заборонені.\n\n" +
-      "Відкрийте налаштування сайту в браузері → Дозволи → Сповіщення → Дозволити."
-    );
-    updateNotifyButton();
-    return;
-  }
-
-  // Must be called from a user gesture
-  try {
-    const perm = await Notification.requestPermission();
-    updateNotifyButton();
-    if (perm === "granted") {
-      // Show a test notification so the user sees it works
-      const notification = new Notification("Сповіщення увімкнено", {
-        body: "Ви отримуватимете попередження про відключення",
-        tag: "outage-welcome",
-        icon: "icon.svg"
-      });
-      openAppFromNotification(notification);
-      updatePersistentNotification();
-      sendOutageAlert();
-    } else if (perm === "denied") {
-      alert("Дозвіл відхилено. Сповіщення не будуть показуватися.");
-    }
-  } catch (e) {
-    console.warn(e);
-    alert("Не вдалося запитати дозвіл: " + (e.message || e));
-  }
-}
-
-function updateNotifyButton() {
-  const btn = document.getElementById("btnNotify");
-  if (!btn) return;
-  const perm = ("Notification" in window) ? Notification.permission : "unsupported";
-  if (perm === "granted") {
-    btn.textContent = "Сповіщення увімкнено ✓";
-    btn.disabled = true;
-  } else if (perm === "denied") {
-    btn.textContent = "Сповіщення заборонені";
-    btn.disabled = false; // allow retry / show instructions
-  } else {
-    btn.textContent = "Увімкнути сповіщення";
-    btn.disabled = false;
-  }
-}
-
+// ——— install ———
 function updateInstallButton() {
-  const btn = document.getElementById("btnInstall");
-  if (btn) btn.hidden = !deferredInstallPrompt;
+  document.querySelector("footer").hidden = !deferredInstallPrompt;
 }
 
 async function installApp() {
@@ -347,57 +259,6 @@ async function installApp() {
   await deferredInstallPrompt.userChoice;
   deferredInstallPrompt = null;
   updateInstallButton();
-}
-
-function sendOutageAlert() {
-  if (Notification.permission !== "granted") return;
-  const event = nextOutage();
-  if (!event) {
-    lastAlertKey = "";
-    return;
-  }
-  const remaining = minutesUntil(event);
-  const threshold = remaining <= 5 ? 5 : remaining <= 10 ? 10 : remaining <= 20 ? 20 : 0;
-  if (!threshold) return;
-  const key = event.queue + "|" + event.date.getTime() + "|" + threshold;
-  if (key === lastAlertKey) return;
-  lastAlertKey = key;
-  const notification = new Notification("Відключення наближається", {
-    body: `О ${event.time} — приблизно ${remaining} хв`,
-    tag: "outage-alert",
-    requireInteraction: true,
-    icon: "icon.svg"
-  });
-  openAppFromNotification(notification);
-}
-
-function updatePersistentNotification() {
-  if (Notification.permission !== "granted") return;
-  const transition = nextTransition();
-  const event = transition.event;
-  const title = event ? transition.label : "Немає найближчих відключень";
-  const body = event
-    ? transition.label === "Світло з’явиться"
-      ? `Світло з’явиться о ${event.time} — через ${countdown(event)}`
-      : `О ${event.time} — через ${countdown(event)}`
-    : lastUpdated ? `Оновлено ${lastUpdated}` : "";
-
-  // Close previous tagged notification and show updated one
-  if (navigator.serviceWorker?.controller) {
-    navigator.serviceWorker.controller.postMessage({
-      type: "SHOW_PERSISTENT",
-      title,
-      body
-    });
-  } else {
-    const notification = new Notification(title, {
-      body,
-      tag: "outage-persistent",
-      silent: true,
-      icon: "icon.svg"
-    });
-    openAppFromNotification(notification);
-  }
 }
 
 // ——— fetch ———
@@ -418,8 +279,6 @@ async function poll() {
     updateConfigFromParsed(parsed);
     lastUpdated = new Date().toLocaleTimeString("uk-UA", { hour: "2-digit", minute: "2-digit" });
     errorText = "";
-    sendOutageAlert();
-    updatePersistentNotification();
   } catch (e) {
     errorText = e.message || "Помилка мережі";
   } finally {
@@ -531,7 +390,6 @@ function render() {
     btn.addEventListener("click", () => {
       setSelectedQueue(btn.dataset.queue);
       render();
-      updatePersistentNotification();
     });
   });
 
@@ -544,8 +402,6 @@ function render() {
     saveConfig(cfg);
     render();
   };
-
-  updateNotifyButton();
 }
 
 // ——— init ———
@@ -565,19 +421,12 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(console.warn);
 }
 
-updateNotifyButton();
 poll();
 setInterval(poll, POLL_MS);
-setInterval(() => {
-  render();
-  sendOutageAlert();
-  updatePersistentNotification();
-}, CLOCK_MS);
+setInterval(render, CLOCK_MS);
 
-// Update notification when page becomes visible
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
-    updatePersistentNotification();
     render();
   }
 });
