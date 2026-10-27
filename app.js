@@ -56,22 +56,19 @@ function intervalEnd(interval) {
 function parseTable(tableHtml, prefix) {
   const date = lastDateBefore(prefix);
   const rows = [];
-  let currentQueue = "";
   const rowMatches = tableHtml.match(/<tr\b[\s\S]*?<\/tr>/gi) || [];
 
   rowMatches.forEach(rowHtml => {
     const cells = rowHtml.match(/<td\b[\s\S]*?<\/td>/gi) || [];
     if (cells.length < 3) return;
-    const hasQueueCell = /turnoff-scheduleui-table-queue/i.test(cells[0]);
-    if (hasQueueCell) currentQueue = stripTags(cells[0]).replace(/\s*черга\s*/i, "");
-    const subqueue = stripTags(cells[hasQueueCell ? 1 : 0]);
-    const scheduleCells = cells.slice(hasQueueCell ? 2 : 1);
-    if (!currentQueue || !subqueue || scheduleCells.length < 2) return;
+    const queue = stripTags(cells[0]);
+    const scheduleCells = cells.slice(1);
+    if (!/^\d+\.\d+$/.test(queue) || scheduleCells.length !== 48) return;
 
     const states = scheduleCells.map(cell => {
       const classes = (cell.match(/class=["']([^"']*)["']/i) || ["", ""])[1];
-      if (/\blight_2\b/.test(classes)) return "off";
-      if (/\blight_3\b/.test(classes)) return "possible";
+      if (/\bgpv-s2\b/.test(classes)) return "off";
+      if (/\bgpv-s3\b/.test(classes)) return "possible";
       return "on";
     });
 
@@ -90,7 +87,7 @@ function parseTable(tableHtml, prefix) {
       }
     }
     rows.push({
-      queue: currentQueue + "." + subqueue,
+      queue,
       date,
       dateText: date.toLocaleDateString("uk-UA"),
       intervals
@@ -101,7 +98,7 @@ function parseTable(tableHtml, prefix) {
 
 function parseResponse(html) {
   const result = [];
-  const tables = html.match(/<table\b[^>]*turnoff-scheduleui-table[^>]*>[\s\S]*?<\/table>/gi) || [];
+  const tables = html.match(/<table\b[^>]*\bgpv-table\b[^>]*>[\s\S]*?<\/table>/gi) || [];
   let cursor = 0;
   tables.forEach(table => {
     const position = html.indexOf(table, cursor);
